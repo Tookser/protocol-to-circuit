@@ -35,9 +35,12 @@ def test_simple_protocols():
 
         n = protocol_to_arr[player_0]
 
-        formula, symbols = create_tree.get_formula_main(n, player_0, player_1)
+        _, _, f1, f2, s1, s2 = create_tree.get_tree_and_formula(n, player_0, player_1)
+        #formula, symbols = create_tree.get_formula_main(n, player_0, player_1)
 
-        assert verify_formula(formula, symbols)
+        assert verify_formula(f1, s1)
+        assert verify_formula(f2, s2)
+        # assert verify_formula(formula, symbols)
 
 
 def test_simple_n():
@@ -46,6 +49,15 @@ def test_simple_n():
         formula, symbols = create_tree.get_formula_main(n, simple_star_n_a, simple_star_n_b)
 
         assert verify_formula(formula, symbols)
+
+
+def test_negative():
+    '''неработающая формула'''
+    formula, symbols = create_tree.get_formula_main(3, simple_star_n_a, simple_star_n_b)
+
+    # формула "\mu_3 ^ y_000" неверная для \mu_3
+    assert not verify_formula(formula and symbols['y000'], symbols)
+
 
 
 # долго работает, поэтому скипнут
@@ -65,14 +77,14 @@ def test_depth():
                                    (a2, b2, 4),
                                    (a2_no_alter, b2_no_alter, 4),
                                    (a3, b3, 6)]:
-        tree, formula, _ = create_tree.get_tree_and_formula(protocol_to_arr[pl_a],
+        tree, _, formula, _, _, _ = create_tree.get_tree_and_formula(protocol_to_arr[pl_a],
                                                       pl_a, pl_b)
 
         # get_depth_formula закомментировано, т.к. элементы в формуле sympy могут иметь фактически больше 2 входов (a | b | c реализуется одним элементом)
         assert get_depth_tree(tree) == real_depth  # == get_depth_formula(formula)
 
     for n in range(1, 6+1):
-        tree, _, _ = create_tree.get_tree_and_formula(n,
+        tree, _, _, _, _, _ = create_tree.get_tree_and_formula(n,
                                                       simple_star_n_a,
                                                       simple_star_n_b)
 

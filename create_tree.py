@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 '''Версия построителя протокола с созданием нод'''
 
-from sys import argv
+from sys import argv, exit
 import re
 import pickle
+import argparse
 
 from anytree import Node, RenderTree
 from sympy import symbols, simplify, Symbol
@@ -104,7 +105,7 @@ def render_tree(root):
         print("%s%s" % (pre, node.name))
 
 
-def create_tree(transcripts, player_0, player_1, print_tree=False):
+def create_tree(transcripts, player_0, player_1):
     '''строит дерево по транскриптам и протоколам'''
     root = Node(function_by_player(player_0, *(player_0, player_1)))
     Node('', parent=root)  # заранее создаём дочерние вершины, но пустые
@@ -148,30 +149,50 @@ def create_tree(transcripts, player_0, player_1, print_tree=False):
         # самый нижний слой - переменные или их отрицания
         node.name = result
 
-    if print_tree:
-        render_tree(root)
-
     return root
 
 
-def check_var(tree):
-    '''проверяет, что все переменные - существующие'''
-    raise NotImplementedError
+def simplify_tree(root, parent=None, was_two=False):
+    '''упрощает дерево функции, убирая вершины с одним потомком
+    was_two - было ли на пути к данному root сверху хоть одно разветвление на 2'''
+    if root is None:
+        return None
+
+    if len(root.children) == 2:
+        if (root.children[0].name != '' and
+            root.children[1].name != ''):
+            # если реальное разветвление
+            new_root = Node(root.name, parent=parent)
+
+            simplify_tree(root.children[0], parent=new_root)
+            simplify_tree(root.children[1], parent=new_root)
+            return new_root
+        else:
+            # только один потомок по факту
+            if root.children[0].name != '':
+                return simplify_tree(root.children[0], parent=parent)
+            elif root.children[1].name != '':
+                return simplify_tree(root.children[1], parent=parent)
+            else:
+                raise Exception()
+
+    elif len(root.children) == 0:
+        return Node(root.name, parent=parent)
+
+    else:
+        raise Exception()
 
 
-def get_formula_main(n, player_0, player_1,
-                     print_tree=False, print_formula=True,
-                     get_tree=False):
-    '''основная функция, возвращает формулу и символы'''
-    tree = create_tree(get_transcripts_from_protocol(n, player_0, player_1), player_0, player_1, print_tree=print_tree)
+def get_formula_main(n, player_0, player_1, get_tree=False):
+    '''основная функция, возвращает (опционально дерево), формулу и символы'''
+    tree = create_tree(get_transcripts_from_protocol(n, player_0, player_1), player_0, player_1)
 
     formula, symbols = fc.tree_to_formula(n, tree)
 
-    if print_formula:
-        print(formula)
-
     if get_tree:
-        return tree, formula, symbols
+        simplified_tree = simplify_tree(tree)
+        formula_from_simplified, symbols_from_simplified = fc.tree_to_formula(n, simplified_tree)
+        return tree, simplified_tree, formula, formula_from_simplified, symbols, symbols_from_simplified
     else:
         return formula, symbols
 
@@ -179,11 +200,35 @@ def get_tree_and_formula(*args, **kwargs):
     '''то же что и get_formula_main, но с деревом'''
     return get_formula_main(*args, **kwargs, get_tree=True)
 
+old_print = print
+
+def print(*args):
+    for el in args:
+        old_print(el, end=' ')
+        old_print('')
+    with open('log.txt', 'a') as log:
+        for el in args:
+            log.write(str(el) + ' ')
+        log.write('\n')
+
 def main():
-    if len(argv) == 1:
-        arg = '1'
-    else:
-        arg = argv[1]
+    with open('log.txt', 'w') as log:  # создание файла
+        log.write('')
+
+    parser = argparse.ArgumentParser(description='Выбор протокола')
+
+    parser.add_argument('type', nargs='?', default='1')
+    parser.add_argument('n', nargs='?', default=4)
+
+    args = parser.parse_args()
+
+    arg = args.type
+    n = int(args.n)
+
+    # if len(argv) == 1:
+    #     arg = '1'
+    # else:
+    #     arg = argv[1]
 
     if arg == '1':
         player_0, player_1 = a1, b1
@@ -196,39 +241,69 @@ def main():
     elif arg == 'simple':
         player_0, player_1 = simple_star_n_a, simple_star_n_b  # для них задаётся позднее
     else:
-        print('Only 1, 2, 3, na2 for protocols a/b1, a/b2, a/b3, a/b2_no_alter')
-        return
+        print('Первым аргументом должно быть название протокола из списка: 1, 2, 3, na2, simple')
+        exit()
 
-    if arg == 'simple':
-        if len(argv) > 2:
-            n = int(argv[2])  # может быть произвольно для данного протокола
-        else:
-            n = 4
-    else:
+
+    if arg != 'simple':
         n = protocol_to_arr[player_0]
 
-    tree, formula, symbols = get_tree_and_formula(n, player_0, player_1, print_tree=True)
+    tree, simplified_tree, formula, formula_from_simplified, symbols, symbols_from_simplified = get_tree_and_formula(n, player_0, player_1)
 
-    if verify_formula(formula, symbols):
-        print('formula is OK!')
+    print('Исходное дерево:')
+    render_tree(tree)
+
+    print('Упрощённое дерево:')
+    render_tree(simplified_tree)
+
+    print('Формула:')
+    print(formula)
+
+    if (verify_formula(formula, symbols) and
+        verify_formula(formula_from_simplified, symbols_from_simplified)): # тут
+        print('Проверка формул завершена, формула корректна.')
+
+        print(f'n = {n}')
 
         depth_of_tree = get_depth_tree(tree)
-        print(f'depth of tree: {depth_of_tree}')
+        print(f'Глубина исходного дерева: {depth_of_tree}')
+
+        elements_of_tree = get_elements_tree(tree)
+        print(f'Элементов в исходном дереве: {elements_of_tree}')
+
+        depth_of_tree = get_depth_tree(simplified_tree)
+        print(f'Глубина упрощённого дерева: {depth_of_tree}')
+
+        elements_of_tree = get_elements_tree(simplified_tree)
+        print(f'Элементов в упрощённом дереве: {elements_of_tree}')
 
         depth_of_formula = get_depth_formula(formula)
-        print(f'depth of formula: {depth_of_formula}')
+        print(f'Глубина формулы (не обязательно с унарно-бинарным деревом): {depth_of_formula}')
 
-        print('writing formula into the file...')
+        depth_of_formula = get_depth_formula(formula_from_simplified)
+        print(f'Глубина формулы из упрощённого дерева (не обязательно с унарно-бинарным деревом): {depth_of_formula}')
+
+        print('Запись формулы в файл...')
         with open('output_formula.txt', 'w') as formula_file:
             formula_file.write(str(formula))
-        print('Done.')
+        print('...завершена.')
 
-        print('Writing tree into the file...')
+        print('Запись упрощённой формулы в файл...')
+        with open('output_simplified_formula.txt', 'w') as formula_file:
+            formula_file.write(str(formula_from_simplified))
+        print('...завершена.')
+
+        print('Запись дерева формулы в файл...')
         with open('output_formula.dot', 'w') as dot_file:
             dot_file.write(dotprint(formula))
-        print('Done.')
+        print('...завершена.')
+
+        print('Запись дерева упрощённой формулы в файл...')
+        with open('output_simplified_formula.dot', 'w') as dot_file:
+            dot_file.write(dotprint(formula_from_simplified))
+        print('...завершена.')
     else:
-        print('error, formula incorrect! ;=(')
+        print('Ошибка: построенная по дереву формула некорректна.')
 
 
 if __name__ == '__main__':

@@ -115,3 +115,18 @@ def get_depth_tree(root):
                            get_depth_tree(root.children[1]))
         else:
             raise Exception('Should be from 0 to 2 childrens')
+
+def get_elements_tree(root):
+    '''определяет число ФЭ в дереве'''
+    if root.name == '':
+        return 0
+    else:
+        if len(root.children) == 0:
+            return 0
+        elif len(root.children) == 1:
+            return 1 + get_elements_tree(root.children[0])
+        elif len(root.children) == 2:
+            return 1 + sum([get_elements_tree(root.children[0]),
+                            get_elements_tree(root.children[1])])
+        else:
+            raise Exception('Should be from 0 to 2 childrens')
